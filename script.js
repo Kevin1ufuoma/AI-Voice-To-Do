@@ -41,29 +41,22 @@ function renderApp() {
 
     // C. Handle Profile Onboarding Visibility
     if (appState.userName) {
-        DOM.profileContainer.style.display = 'none';
-        DOM.todoForm.style.display = 'block';
-        
-        // Return Voice Greeting Handler
+    DOM.profileContainer.style.display = 'none';
+    DOM.todoForm.style.display = 'block';
+    
         if (!window.hasGreeted) {
-            window.hasGreeted = true; 
+            window.hasGreeted = true;
             const greetingPhrase = `Welcome back, ${appState.userName}. How can I assist you with your schedule today?`;
             
-            setTimeout(() => {
+            // Mobile Action: Force voice prompt *only* on a clear user screen tap gesture
+            DOM.voiceInstruction.textContent = "👋 Tap the screen once to wake up your AI Voice Assistant.";
+            
+            const mobileVoiceUnlock = () => {
                 speakAI(greetingPhrase);
-                if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
-                    DOM.voiceInstruction.textContent = "💡 Click anywhere on the screen to unlock AI voice assistant.";
-                }
-            }, 300);
-
-            const unlockVoiceClick = () => {
-                if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
-                    speakAI(greetingPhrase);
-                }
                 DOM.voiceInstruction.textContent = "Click the mic to speak your tasks.";
-                document.removeEventListener('click', unlockVoiceClick);
+                document.removeEventListener('click', mobileVoiceUnlock);
             };
-            document.addEventListener('click', unlockVoiceClick);
+            document.addEventListener('click', mobileVoiceUnlock);
         }
     } else {
         DOM.profileContainer.style.display = 'block';
@@ -154,13 +147,21 @@ function renderApp() {
 // ==========================================
 function speakAI(textText) {
     if ('speechSynthesis' in window) {
+        // Force reset the voice queue to prevent mobile browser lockups
         window.speechSynthesis.cancel();
+        
         const utterance = new SpeechSynthesisUtterance(textText);
-        utterance.rate = 0.95;
+        utterance.rate = 1.0; // Normal rate works best on mobile engines
+        utterance.pitch = 1.0;
+        
         const voices = window.speechSynthesis.getVoices();
-        const premiumVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Natural')) 
-                           || voices.find(v => v.lang.startsWith('en-')) || voices;
+        // Look for Google's native mobile high-quality voices first
+        const premiumVoice = voices.find(v => v.name.includes('Google US English') || v.name.includes('Google UK')) 
+                           || voices.find(v => v.lang.startsWith('en')) 
+                           || voices[0]; // Fallback to whatever voice profile is ready
+        
         if (premiumVoice) utterance.voice = premiumVoice;
+        
         window.speechSynthesis.speak(utterance);
     }
 }
@@ -334,11 +335,14 @@ function initApp() {
     renderApp();
 }
 
+// Mobile browsers don't always trigger onvoiceschanged cleanly, so we check both options instantly
 if ('speechSynthesis' in window) {
     if (window.speechSynthesis.getVoices().length > 0) {
         initApp();
     } else {
         window.speechSynthesis.onvoiceschanged = initApp;
+        // Fallback: Force initialize after 500ms if the browser voice engine is slow
+        setTimeout(initApp, 500);
     }
 } else {
     initApp();
